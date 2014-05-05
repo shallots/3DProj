@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>MGA-411 Mangusa</title>
+    <script type="text/javascript" charset="utf-8" src="three.js"></script>
+    <script type="text/javascript" charset="utf-8" src="OBJLoader.js"></script>
+    <script type="text/javascript" charset="utf-8" src="OBJMTLLoader.js"></script>
+    <script type="text/javascript" src="RollControls.js"></script>
+    <script type="text/javascript" src="FlyControls.js"></script>
+	<script type="text/javascript" charset="utf-8" src="MTLLoader.js"></script>
+	<style>body{overflow:hidden;background:#000}</style>
+</head>
+<body>
+	<div id="Loading" style="color:#fff">Loading...</div>
+</body>
+	<script>
+	/* 场景 */
+	var WIDTH = document.documentElement.offsetWidth || 800,
+		HEIGHT = document.documentElement.clientHeight || 600;
+	var scene = new THREE.Scene();
+	/* 摄像头 */
+	var VIEW_ANGLE = 75,
+		ASPECT = WIDTH / HEIGHT,
+		NEAR = 0.1,
+		FAR = 10000;
+	var	camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+		camera.position.set(200, 200, 200);
+		camera.lookAt(new THREE.Vector3(0, 0, 0));
+		scene.add(camera);
+	/* 渲染器 */
+	var	renderer = new THREE.WebGLRenderer();
+		renderer.setSize(WIDTH , HEIGHT);
+		document.body.appendChild(renderer.domElement);
+	/* 灯光 */
+	var light = new THREE.DirectionalLight(0xFFFFFF);
+		//light.position.set(0, 0, 99).normalize();
+		light.position.set(0, 100, 100).normalize();
+		scene.add(light);
+
+
+
+	var PlaneGeo = new THREE.PlaneGeometry(4096, 4096, 1, 1);
+	//var material_Plane= new THREE.MeshLambertMaterial({color: 0xFFFFFF});
+
+	var maxAnisotropy = renderer.getMaxAnisotropy();
+
+				var texture1 = THREE.ImageUtils.loadTexture( "crate.gif" );
+				var material_Plane = new THREE.MeshPhongMaterial( { color: 0xffffff, map: texture1 } );
+				texture1.anisotropy = maxAnisotropy;
+				texture1.wrapS = texture1.wrapT = THREE.RepeatWrapping;
+				texture1.repeat.set( 24, 12 );
+
+
+	var plane = new THREE.Mesh(PlaneGeo, material_Plane); 
+		plane.rotation.x = -0.5 * Math.PI;
+		//alert(plane.rotation.x);
+    	plane.position.x = 15;
+    	plane.position.y = 50;
+    	plane.position.z = 0;
+
+		//plane.receiveShadow = true; 
+		scene.add(plane);
+
+	
+	/* 显示对象 */
+	var material = new THREE.MeshLambertMaterial({ color: 0xFFFF00,/* emissive: 0xff0000, wireframe: true*/ }),
+		obj;
+
+ 
+	  //rollControls 
+/*	var clock = new THREE.Clock();
+    var rollControls = new THREE.RollControls(camera);
+	rollControls.movementSpeed = 125;
+	rollControls.lookSpeed = 10;*/
+
+
+
+
+
+	 //flyControls
+	 var clock = new THREE.Clock();
+	var flyControls = new THREE.FlyControls(camera);
+        flyControls.movementSpeed = 50;
+       // flyControls.domElement = document.querySelector("#WebGL-output");
+        flyControls.rollSpeed = Math.PI / 24;
+        flyControls.autoForward = true;
+        flyControls.dragToLook = false;
+
+
+
+/*	
+	//导入js文件
+	var loader = new THREE.JSONLoader(true);
+    loader.load("car2.js", function ( geometry ) {
+		var loading = document.getElementById("Loading");
+		loading.parentNode.removeChild(loading);
+		
+		//var mat = new THREE.MeshLambertMaterial({color: 0xF0C8C9, skinning: true});
+        //var   mesh = new THREE.SkinnedMesh(geometry, mat);
+
+		obj = new THREE.Mesh(geometry, material);
+		obj.position.set(0,0,0);
+		scene.add(obj);
+		//scene.add(mat);
+*/
+
+
+		//导入OBJ模型
+		var loader = new THREE.OBJMTLLoader();
+		loader.load( 'test2.obj', 'test2.mtl', function ( object ) {
+		object.position.y = 50;
+		object.scale.set(100,100,100);
+		scene.add( object );
+		} );
+
+		var start = new Date().getTime(),delta;
+
+		(function anime(){
+			delta = new Date().getTime() - start;
+			//obj.rotation.y =   delta / 1000;
+
+
+			var delta = clock.getDelta();
+			//rollControls.update(delta);
+			flyControls.update(delta);
+
+			renderer.render(scene, camera);
+			return requestAnimationFrame(anime);
+		})();
+	//});
+/*
+    var loader = new THREE.JSONLoader();
+    loader.load('../assets/models/misc_chair01.js', function
+    (geometry, mat) {
+    mesh = new THREE.Mesh(geometry, mat[0]);
+    mesh.scale.x = 15;
+    mesh.scale.y = 15;
+    mesh.scale.z = 15;
+    scene.add(mesh);
+    }, '../assets/models');
+*/
+	
+/*	
+//导入obj文件
+	var loader = new THREE.OBJLoader();
+	loader.load('sphere1.obj', function(geometry) {
+	var material = new THREE.MeshLambertMaterial({
+	color: 0x5C3A21
+	});
+// geometry is a group of children.
+// If a child has one additional child it's probably a mesh
+	geometry.children.forEach(function(child) {
+	if (child.children.length == 1) {
+		if (child.children[0] instanceof THREE.Mesh) {
+		child.children[0].material = material;
+		}
+	}
+	});
+	geometry.scale.set(100, 100, 100);
+	geometry.rotation.x = -0.3;
+	scene.add(geometry);
+	});
+
+//方法二
+	var loader = new THREE.OBJLoader();
+	loader.load('sphere1.obj', function(obj) { 
+		obj.traverse(function(child) { 
+			if (child instanceof THREE.Mesh) { 
+				child.material.side = THREE.DoubleSide; 
+			} 
+		}); 
+		mesh = obj; scene.add(obj); 
+	});
+
+*/
+</script>
+</html>

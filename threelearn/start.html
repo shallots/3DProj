@@ -1,0 +1,39 @@
+<html>
+<head>
+	<title> Three.js start</title>
+	<script src="js/three.js"></script>
+	<script type="text/javascript" >
+	function init(){
+		//alert("load complete!");
+		var renderer = new THREE.WebGLRenderer({
+			canvas:document.getElementById('mainCanvas')
+		});
+		renderer.setClearColor(0x000000);
+		var scene = new THREE.Scene();
+
+		var camera = new THREE.PerspectiveCamera(60,4/3,1,1000);
+		//var camera = new THREE.OrthographicCamera(-2,2,1.5,-1.5,1,10);
+		camera.position.set(-4,-3,5);
+		camera.lookAt(new THREE.Vector3(0,0,0));
+		scene.add(camera);
+
+		var cube = new THREE.Mesh(new THREE.CubeGeometry(1,1,1),
+			new THREE.MeshBasicMaterial({
+				color:0xff0000,
+				wireframe:true
+			})
+		);
+		scene.add(cube);
+
+		renderer.render(scene,camera);
+	}	
+	</script>
+</head>
+<body onload="init()">
+	This is a start page! 
+	<br/>
+ 	<canvas id="mainCanvas" width="800px" height="600px">
+		
+	</canvas> 
+</body>
+</html>

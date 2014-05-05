@@ -1,0 +1,89 @@
+<html>
+<head>
+	<title>
+		render the object
+	</title>
+	<script type="text/javascript" src="three.js"></script>
+	<script type="text/javascript">
+	var renderer;
+	var height;
+	var width;
+	function initThree(){
+		renderer = new THREE.WebGLRenderer({
+			canvas:document.getElementById('maincanvas')
+		});
+		// height = document.getElementById('maincanvas').clientHeight;
+		// width = document.getElementById('maincanvas').clientWidth;
+		renderer.setClearColor(0xffffff);
+	}
+	var scene;
+	function initScene(){
+		scene = new THREE.Scene();
+	}
+
+	var camera;
+	function initCamera(){
+		camera = new THREE.PerspectiveCamera(120,4/3,1,1000);
+		camera.position.set(0,0,20);
+		camera.lookAt(new THREE.Vector3(0,0,0));
+		scene.add(camera);
+	}
+
+	var light;
+	function initLight(){
+		light = new THREE.DirectionalLight(0xff0000, 1.0, 0);
+		light.position.set(0,0,30);
+		scene.add(light);
+	}
+
+	var obj;
+	function initObject(){  
+/*		obj = new THREE.Mesh(new THREE.CubeGeometry(1,1,1),
+			new THREE.MeshBasicMaterial({
+				color:0xff0000,
+				wireframe:true
+			})
+		);*/
+
+		// 添加纹理材质
+		var texture;
+		texture = THREE.ImageUtils.loadTexture('test.png',{},function(){
+			renderer.render(scene,camera);
+		});
+		texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+		texture.repeat.set(2, 2);
+
+		var material = new THREE.MeshLambertMaterial({
+			map:texture
+		});
+		obj = new THREE.Mesh(
+			// new THREE.SphereGeometry(3,8,12,Math.PI/6,Math.PI/3),
+			// // new THREE.MeshLambertMaterial({
+			// // 	color: 0xff0000
+			// // })
+			// new THREE.MeshBasicMaterial({
+			// 	color:0xff0000,
+			// 	wireframe:true
+			// })
+			new THREE.PlaneGeometry(20,20,2,2),
+			material
+		);
+		scene.add(obj);
+		//obj.position.set(0,0,0);
+	}
+	function threeStart() {
+		initThree();
+		initScene();
+		initCamera();   
+		initLight();
+		initObject();
+		//renderer.clear(); 
+		renderer.render(scene, camera);
+	}	
+	</script>
+</head>
+<body onload="threeStart()">
+	<canvas id="maincanvas" width="1200px" height="1200px">
+	</canvas>
+</body>
+</html>

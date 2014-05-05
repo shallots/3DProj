@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+    body {
+        /* set margin to 0 and overflow to hidden, to go fullscreen */
+        margin: 0;
+        overflow: hidden;
+        background-color: #000000;
+    }
+</style>
+
+<title>Physijs Constraints</title>
+
+<script type="text/javascript" src="three.js"></script>
+<script type="text/javascript" src="stats.js"></script>
+<script type="text/javascript" src="physi.js"></script>
+<script type="text/javascript" src="dat.gui.js"></script>
+<script type="text/javascript" src="chroma.js"></script>
+<script type="text/javascript" src="TrackballControls.js"></script>
+
+<script type="text/javascript">
+
+'use strict';
+
+Physijs.scripts.worker = 'physijs_worker.js';
+Physijs.scripts.ammo = 'ammo.js';
+
+var scale = chroma.scale(['white', 'blue', 'red', 'yellow']);
+var windowHalfX = window.innerWidth / 2;
+var windowHalfY = window.innerHeight / 2;
+
+var initScene, render, applyForce, setMousePosition, mouse_position,
+        ground_material, box_material,velocity ,wheelAngle , car,
+        projector, renderer, render_stats, physics_stats, scene, ground, light, camera, box, boxes = [];
+
+initScene = function () {
+    projector = new THREE.Projector;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    renderer.setClearColorHex(0x000000);
+    renderer.shadowMapEnabled = true;
+
+
+    document.getElementById('viewport').appendChild(renderer.domElement);
+
+    render_stats = new Stats();
+    render_stats.domElement.style.position = 'absolute';
+    render_stats.domElement.style.top = '1px';
+    render_stats.domElement.style.left = '1px';
+    render_stats.domElement.style.zIndex = 100;
+    document.getElementById('viewport').appendChild(render_stats.domElement);
+
+
+    scene = new Physijs.Scene({reportSize: 10, fixedTimeStep: 1 / 60});
+
+    scene.setGravity(new THREE.Vector3(0, -40, 0));
+
+    camera = new THREE.PerspectiveCamera(
+            35,
+            window.innerWidth / window.innerHeight,
+            1,
+            1000
+    );
+    camera.position.set(190, 190, 190);
+    camera.lookAt(new THREE.Vector3(30, 0, -20));
+    scene.add(camera);
+
+    // Light
+    light = new THREE.DirectionalLight(0xFFFFFF);
+    light.position.set(120, 70, 100);
+    light.castShadow = true;
+    light.shadowMapDebug = true;
+    light.shadowCameraNear = 10;
+    light.shadowCameraFar = 2000;
+
+
+    scene.add(light);
+
+
+    var meshes = [];
+
+
+    createGround();
+    //var car = createCar();
+    car = createCar();
+
+    velocity = -2;
+    wheelAngle = 0.5;
+    document.addEventListener("keydown", onKeyDown, false);
+    document.addEventListener("keyup", onKeyUp, false);
+
+/*    document.addEventListener( 'mousemove', onDocumentMouseMove, false );*/
+
+    document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+
+    var ua=false,us=false,ud=false,uw=false,uspace=false;
+    function onKeyDown(a){
+        var b = a.keyCode;
+        if (b == 38 || b == 87 && velocity >= -5 && velocity< 5)
+            uw = true;
+        else if (b == 40 || b == 83 && velocity > -5 && velocity<= 5)
+            us = true;
+        else if (b == 37 || b == 65 && wheelAngle >= -0.6 && wheelAngle < 0.6)
+            ua = true;
+        else if (b == 39 || b == 68 && wheelAngle > -0.6 && wheelAngle <= 0.6)
+            ud = true;
+        else if (b == 32)
+            uspace = true;
+        option();
+    }
+    function onDocumentMouseDown(event){
+        console.log("clientx="+event.clientX+" clientY="+event.clientY+" screenx="+event.screenX+' screeny='+event.screenY);
+    }
+    function onKeyUp(a){
+        var b = a.keyCode;
+        if (b == 38 || b == 87)
+            uw = false;
+        else if (b == 40 || b == 83)
+            us = false;
+        else if (b == 37 || b == 65)
+            ua = false;
+        else if (b == 39 || b == 68)
+            ud = false;
+        else if (b == 32)
+            uspace = false;
+    }
+
+    function option(){
+        if(uw == true )
+            velocity += -0.02;
+        if(us == true)
+            velocity += 0.02;
+        if(ua == true)
+            wheelAngle += 0.01;
+        if(ud == true)
+            wheelAngle += -0.01;
+        if(uspace == true)
+            velocity = 0;
+
+        if(velocity > 10)
+            velocity = 10;
+        else if(velocity<-10)
+            velocity = -10;
+
+        if(wheelAngle>1)
+            wheelAngle = 1;
+        else if(wheelAngle<-1)
+            wheelAngle = -1;
+
+        car.flConstraint.configureAngularMotor(2, 0.1, 0, velocity, 15000);
+        car.frConstraint.configureAngularMotor(2, 0.1, 0, velocity, 15000);
+
+        car.rrConstraint.setAngularLowerLimit({ x: 0, y: wheelAngle, z: 0.1 });
+        car.rrConstraint.setAngularUpperLimit({ x: 0, y: wheelAngle, z: 0 });
+        car.rlConstraint.setAngularLowerLimit({ x: 0, y: wheelAngle, z: 0.1 });
+        car.rlConstraint.setAngularUpperLimit({ x: 0, y: wheelAngle, z: 0 });
+        car.flConstraint.enableAngularMotor(2);
+        car.frConstraint.enableAngularMotor(2);
+
+    }
+
+/*    var mouseX,mouseY;
+    function onDocumentMouseMove( event ) {
+        console.log('move');
+        mouseX = ( event.clientX - windowHalfX ) * 3;
+        mouseY = ( event.clientY - windowHalfY ) * 3;
+        camera.position.x += ( mouseX - camera.position.x ) * .05;
+        camera.position.y += ( - mouseY - camera.position.y ) * .05;
+        camera.lookAt.x+= ( mouseX - camera.position.x ) * .05;
+        camera.lookAt.y += ( - mouseY - camera.position.y ) * .05;
+    }*/
+
+
+    requestAnimationFrame(render);
+    scene.simulate();
+};
+
+
+
+function createWheel(position) {
+    var wheel_material = Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ color: 0x444444, opacity: 0.9, transparent: true }),
+            1.0, // high friction
+            .5 // medium restitution
+    );
+
+    var wheel_geometry = new THREE.CylinderGeometry(4, 4, 2, 10);
+    var wheel = new Physijs.CylinderMesh(
+            wheel_geometry,
+            wheel_material,
+            100
+    );
+
+    wheel.rotation.x = Math.PI / 2;
+    wheel.castShadow = true;
+    wheel.position = position;
+    return wheel;
+}
+
+
+function createCar() {
+    var car = {};
+    var car_material = Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ color: 0xff4444, opacity: 0.9, transparent: true }),
+            .5, // high friction
+            .5 // medium restitution
+    );
+
+    // create the car body
+    var geom = new THREE.CubeGeometry(15, 4, 4);
+    var body = new Physijs.BoxMesh(geom, car_material, 500);
+    body.position.set(5, 5, 5);
+    car.position = body.position;
+    body.castShadow = true;
+    scene.add(body);
+
+    // create the wheels
+    var fr = createWheel(new THREE.Vector3(0, 4, 10));
+    var fl = createWheel(new THREE.Vector3(0, 4, 0));
+    var rr = createWheel(new THREE.Vector3(10, 4, 10));
+    var rl = createWheel(new THREE.Vector3(10, 4, 0));
+
+    // add the wheels to the scene
+    scene.add(fr);
+    scene.add(fl);
+    scene.add(rr);
+    scene.add(rl);
+
+    // create a head for the car
+    var head_material = Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ color: 0xffff00, opacity: 0.9, transparent: true }),
+            .5, // high friction
+            .5 // medium restitution
+    );
+
+    var head_geom = new THREE.CubeGeometry(4,4,4);
+    var headx = new Physijs.BoxMesh(head_geom,head_material,100);
+    headx.position.set(0,9,5);
+    headx.castShadow = true;
+    scene.add(headx);
+
+    var frConstraint = createWheelConstraint(fr, body, new THREE.Vector3(0, 4, 8));
+    scene.addConstraint(frConstraint);
+
+    var flConstraint = createWheelConstraint(fl, body, new THREE.Vector3(0, 4, 2));
+    scene.addConstraint(flConstraint);
+
+    var hConstraint = new Physijs.DOFConstraint(headx, body, new THREE.Vector3(0,7,5));
+    scene.addConstraint(hConstraint);
+
+    var rrConstraint = createWheelConstraint(rr, body, new THREE.Vector3(10, 4, 8));
+    scene.addConstraint(rrConstraint);
+
+    var rlConstraint = createWheelConstraint(rl, body, new THREE.Vector3(10, 4, 2));
+    scene.addConstraint(rlConstraint);
+
+
+    // backwheels don't move themselves and are restriced in their
+    // movement. They should be able to rotate along the z-axis
+    // same here, if the complete angle is allowed set lower higher
+    // than upper.
+    // by setting the lower and upper to the same value you can
+    // fix the position
+    // we can set the x position to 'loosen' the axis for the directional
+    rrConstraint.setAngularLowerLimit({ x: 0, y: 0.5, z: 0.1 });//0.5
+    rrConstraint.setAngularUpperLimit({ x: 0, y: 0.5, z: 0 });
+    rlConstraint.setAngularLowerLimit({ x: 0, y: 0.5, z: 0.1 });
+    rlConstraint.setAngularUpperLimit({ x: 0, y: 0.5, z: 0 });
+
+
+    // front wheels should only move along the z axis.
+    // we don't need to specify anything here, since
+    // that value is overridden by the motors
+    frConstraint.setAngularLowerLimit({ x: 0, y: 0, z: 0 });
+    frConstraint.setAngularUpperLimit({ x: 0, y: 0, z: 0 });
+    flConstraint.setAngularLowerLimit({ x: 0, y: 0, z: 0 });
+    flConstraint.setAngularUpperLimit({ x: 0, y: 0, z: 0 });
+
+    // if you add a motor, the current constraint is overridden
+    // if you want to rotate set min higher then max
+    flConstraint.configureAngularMotor(2, 0.1, 0, -2, 1500);//-2
+    frConstraint.configureAngularMotor(2, 0.1, 0, -2, 1500);
+
+    // motor one is for left and right
+//                frConstraint.enableAngularMotor(1);
+
+    // motor two is forward and backwards
+    flConstraint.enableAngularMotor(2);
+    frConstraint.enableAngularMotor(2);
+
+    car.flConstraint = flConstraint;
+    car.frConstraint = frConstraint;
+    car.rlConstraint = rlConstraint;
+    car.rrConstraint = rrConstraint;
+    car.hConstraint = hConstraint;
+
+    return car;
+}
+
+function createWheelConstraint(wheel, body, position) {
+    var constraint = new Physijs.DOFConstraint(
+            wheel, body, position);
+
+    return constraint;
+}
+
+function createGround() {
+    var length = 480;
+    var width = 480;
+    // Materials
+    ground_material = Physijs.createMaterial(
+            new THREE.MeshPhongMaterial(
+                    {
+//                                color: 0xaaaaaa,
+                        map: THREE.ImageUtils.loadTexture('floor-wood.jpg')
+                    }),
+            1, // high friction
+            .7 // low restitution
+    );
+
+    // Ground
+    ground = new Physijs.BoxMesh(
+            new THREE.CubeGeometry(length, 1, width),
+            ground_material,
+            0 // mass
+    );
+
+    ground.receiveShadow = true;
+
+
+    var borderLeft = new Physijs.BoxMesh(
+            new THREE.CubeGeometry(2, 6, width),
+            ground_material,
+            0 // mass
+    );
+
+    borderLeft.position.x = -1 * length / 2 - 1;
+    borderLeft.position.y = 2;
+    borderLeft.receiveShadow = true;
+
+
+    ground.add(borderLeft);
+
+    var borderRight = new Physijs.BoxMesh(new THREE.CubeGeometry(2, 6, width),
+            ground_material,
+            0 // mass
+    );
+    borderRight.position.x = length / 2 + 1;
+    borderRight.position.y = 2;
+    borderRight.receiveShadow = true;
+
+    ground.add(borderRight);
+
+
+    var borderBottom = new Physijs.BoxMesh(
+            new THREE.CubeGeometry(width - 1, 6, 2),
+            ground_material,
+            0 // mass
+    );
+
+    borderBottom.position.z = width / 2;
+    borderBottom.position.y = 1.5;
+    borderBottom.receiveShadow = true;
+    ground.add(borderBottom);
+
+    var borderTop = new Physijs.BoxMesh(
+            new THREE.CubeGeometry(width, 6, 2),
+            ground_material,
+            0 // mass
+    );
+
+    borderTop.position.z = -width / 2;
+    borderTop.position.y = 2;
+
+    borderTop.receiveShadow = true;
+
+    ground.position.x = 20;
+    ground.position.z = -20;
+    ground.add(borderTop);
+
+    ground.receiveShadow = true;
+
+    scene.add(ground);
+}
+
+
+render = function () {
+    //控制camera跟踪车走
+    camera.position.set(car.position.x +100,car.position.y+100,car.position.z+100);
+    
+    requestAnimationFrame(render);
+    renderer.render(scene, camera);
+    render_stats.update();
+    scene.simulate(undefined, 2);
+};
+
+
+window.onload = initScene;
+
+</script>
+</head>
+
+<body>
+<div id="viewport"></div>
+</body>
+
+</html>
