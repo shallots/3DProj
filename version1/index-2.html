@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+    body {
+        /* set margin to 0 and overflow to hidden, to go fullscreen */
+        margin: 0;
+        overflow: hidden;
+        background-color: #000000;
+    }
+</style>
+
+<title>Physijs Constraints</title>
+
+<script type="text/javascript" src="three.js"></script>
+<script type="text/javascript" src="stats.js"></script>
+<script type="text/javascript" src="physi.js"></script>
+<script type="text/javascript" src="dat.gui.js"></script>
+<script type="text/javascript" src="chroma.js"></script>
+<script type="text/javascript" src="TrackballControls.js"></script>
+<script type="text/javascript" src="perlin.js"></script>
+<script type="text/javascript" src="OrbitControls.js"></script>
+<script type="text/javascript" src="RollControls.js"></script>
+<script type="text/javascript" charset="utf-8" src="OBJMTLLoader.js"></script>
+<script type="text/javascript" charset="utf-8" src="MTLLoader.js"></script>
+
+
+<script type="text/javascript">
+
+'use strict';
+
+Physijs.scripts.worker = 'physijs_worker.js';
+Physijs.scripts.ammo = 'ammo.js';
+
+var scale = chroma.scale(['white', 'blue', 'red', 'yellow','green']);
+var windowHalfX = window.innerWidth / 2;
+var windowHalfY = window.innerHeight / 2;
+
+var initScene, render, applyForce, setMousePosition, mouse_position,
+        ground_material, box_material,velocity ,wheelAngle , car, mouseX,mouseY,
+        clock,orbitControls,delta,rollControls,cameraCount = 1,cameraHeight = 50,
+        projector, renderer, render_stats, physics_stats, scene, ground, light, camera, box, boxes = [],vehicle_body, vehicle=[],input=[],currentId,uc = false,resetkey=false,initPos = [];
+
+var obj_model = [];
+
+initScene = function () {
+    projector = new THREE.Projector;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    renderer.setClearColorHex(0x000000);
+    renderer.shadowMapEnabled = true;
+
+
+    document.getElementById('viewport').appendChild(renderer.domElement);
+
+    render_stats = new Stats();
+    render_stats.domElement.style.position = 'absolute';
+    render_stats.domElement.style.top = '1px';
+    render_stats.domElement.style.left = '1px';
+    render_stats.domElement.style.zIndex = 100;
+    document.getElementById('viewport').appendChild(render_stats.domElement);
+
+
+    scene = new Physijs.Scene({reportSize: 10, fixedTimeStep: 1 / 60});
+
+    scene.setGravity(new THREE.Vector3(0, -80, 0));
+
+    camera = new THREE.PerspectiveCamera(
+            45,
+            window.innerWidth / window.innerHeight,
+            1,
+            11500
+    );
+    //camera.position.set(190, 190, 190);
+    //camera.lookAt(new THREE.Vector3(0, 0, 0));
+    scene.add(camera);
+
+    // Light
+    light = new THREE.DirectionalLight(0xFFFFFF,1.3);
+    var light1 = new THREE.AmbientLight(0xffffff);
+    light.position.set(-1200, 3000, -1000);
+    light.castShadow = true;
+    light.shadowMapDebug = true;
+    light.shadowCameraNear = 10;
+    light.shadowCameraFar = 200;
+
+    scene.add(light);
+    //scene.add(light2);
+
+    // init some varialbe
+    initPos[0] = new THREE.Vector3(1000,20,1000); 
+    initPos[1] = new THREE.Vector3(-4600,20,-3000); 
+
+    var meshes = [];
+
+
+    createGround();
+    createCube();
+    
+    createCar();
+    createCar2();
+
+    //camera.lookAt(new THREE.Vector3( car.position.x,car.position.y,car.position.z));
+    createModel();
+    velocity = -2;
+    wheelAngle = 0.3;
+
+/*    //控制鼠标视觉角度
+    clock = new THREE.Clock();
+    rollControls = new THREE.RollControls(camera);
+    rollControls.movementSpeed = 0;
+    rollControls.lookSpeed = 1;
+*/
+/*
+   //orbitControls
+    clock = new THREE.Clock();
+    orbitControls = new THREE.OrbitControls(camera);
+    orbitControls.autoRotate = false;
+    //delta = clock.getDelta();
+    //orbitControls.update(delta);
+*/
+    //var mouseX,mouseY;
+    document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+    window.addEventListener( 'resize', onWindowResize, false );
+
+    function onWindowResize() {
+
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize( window.innerWidth, window.innerHeight );
+    }
+    
+    function onDocumentMouseMove( event ) {
+
+        mouseX = ( event.clientX - windowHalfX ) * 0.2;
+        mouseY = -( event.clientY - windowHalfY ) * 0.2;
+
+        //camera.position.x += ( mouseX - camera.position.x ) * .05;
+        //camera.position.y += ( - mouseY - camera.position.y ) * .05;
+        //camera.lookAt.x+= ( mouseX - camera.position.x ) * .05;
+        //camera.lookAt.y += ( - mouseY - camera.position.y ) * .05;
+        //requestAnimationFrame(render);
+    }
+     // 场景更新事件函数
+     scene.addEventListener(
+                'update',
+                function() {
+
+                    if ( input[currentId] && vehicle ) {
+                        if ( input[currentId].direction !== null ) {
+                            input[currentId].steering += input[currentId].direction / 100;
+                            if ( input[currentId].steering < -.5 ) input[currentId].steering = -.5;
+                            if ( input[currentId].steering > .5 ) input[currentId].steering = .5;
+                        }
+                        vehicle[currentId].setSteering( input[currentId].steering, input[currentId].front );
+                        vehicle[currentId].setSteering( input[currentId].steering, input[currentId].front+1 );
+
+                        if ( input[currentId].power === true ) {
+                            input[currentId].velocity += input[currentId].vsize;
+                            if(input[currentId].velocity>input[currentId].vmax) input[currentId].velocity = input[currentId].vmax;
+                            vehicle[currentId].applyEngineForce( input[currentId].fd*input[currentId].velocity );
+                        } else if ( input[currentId].power === false ) {
+                            if(input[currentId].velocity > 0){
+                                vehicle[currentId].applyEngineForce( 0 ); 
+                                input[currentId].velocity = 0;   
+                                console.log("backward,"+input[currentId].velocity);                       
+                            }else{
+                                input[currentId].velocity -= input[currentId].vsize;
+                                if(input[currentId].velocity<-input[currentId].vmax) input[currentId].velocity = -input[currentId].vmax;
+                                vehicle[currentId].applyEngineForce( input[currentId].fd*input[currentId].velocity );                                
+                            }
+
+                        } else{
+                            vehicle[currentId].setBrake( input[currentId].vsize, 2 );
+                            vehicle[currentId].setBrake( input[currentId].vsize, 3 );                            
+                            vehicle[currentId].applyEngineForce(0);
+                            input[currentId].velocity = 0;
+                        }
+
+                        if(input[currentId].brake == true){
+                            vehicle[currentId].setBrake( input[currentId].vmax, 2 );
+                            vehicle[currentId].setBrake( input[currentId].vmax, 3 ); 
+                            vehicle[currentId].applyEngineForce( 0 );
+                            input[currentId].velocity = 0;
+                        }
+                    }
+                    //console.log('update');
+                    scene.simulate( undefined, 2 );
+                }
+            );
+    
+    requestAnimationFrame(render);
+    scene.simulate();
+
+};
+
+function optionCamera(){
+    cameraCount++;
+    var num = cameraCount % 4;
+    switch(num){
+        case 0: {cameraHeight = 50; break;}
+        case 1: {cameraHeight = 100; break;}
+        case 2: {cameraHeight = 1000; break;}
+        case 3: {cameraHeight = 10000; break;}
+        defaulf: break;
+    }
+    console.log('optionCamera');
+
+}
+
+function setCurrentId(id){
+    if(vehicle[id-1]){
+        currentId = id-1;
+        vehicle[(id)%2].applyEngineForce(0);
+    }
+}
+
+function resetCar(){
+    if(vehicle[currentId]){
+        // initPos[currentId].x = vehicle[currentId].mesh.x;
+        // initPos[currentId].y = vehicle[currentId].mesh.y;
+        // initPos[currentId].z = vehicle[currentId].mesh.z;
+        // console.log(initPos[currentId].x+' - ' + initPos[currentId].z);
+        scene.remove(vehicle[currentId]);
+        initPos[currentId].set(vehicle[currentId].mesh.position.x,vehicle[currentId].mesh.position.y,vehicle[currentId].mesh.position.z);
+        initPos[currentId].x -= (initPos[currentId].x/Math.abs(initPos[currentId].x))*200;
+        switch(currentId){
+            case 0:
+                createCar();
+                break;
+            case 1:
+                createCar2();
+                break;
+        }
+    }
+}
+
+function createCar() {
+    var loader = new THREE.JSONLoader();
+     loader.load( "car_1.js", function( car, car_materials ) {
+                loader.load( "car_1_wheel_r.js", function( wheel, wheel_materials ) {
+                    loader.load( "car_1_wheel_l.js", function( wheel_r, wheel_r_materials ) {
+                        currentId = 0;
+                        var mesh = new Physijs.BoxMesh(
+                            car,
+                            new THREE.MeshFaceMaterial( car_materials ),
+                            350
+                        );
+                        //mesh.position.y = 2;
+                        //mesh.position.set(300,2,300);
+                        //mesh.scale.set(5,5,5);
+                        mesh.castShadow = mesh.receiveShadow = true;
+
+                        var vehicle = new Physijs.Vehicle(mesh, new Physijs.VehicleTuning(
+                            100.88,
+                            10.83,
+                            0.3,
+                            500,
+                            10.5,
+                            20000
+                        ));
+                        //console.log(initPos[currentId].x+' + ' + initPos[currentId].z);
+                        vehicle.mesh.position.set(initPos[currentId].x,initPos[currentId].y,initPos[currentId].z);              
+                        //vehicle.mesh.position = initPos[currentId];
+                        vehicle.mesh.rotation.y = -Math.PI/2;
+     //                   vehicle.mesh.scale.set(2,2,2);
+                        //test = new test;
+                        scene.add( vehicle );
+
+                        window.vehicle[currentId] = vehicle;
+                        window.scene = scene;
+
+                        var wheel_material = new THREE.MeshFaceMaterial( wheel_materials );
+                        var wheel_r_material = new THREE.MeshFaceMaterial(wheel_r_materials);
+                        //
+                        // 0, bl,
+                        // 1, br,
+                        // 2, fl,
+                        // 3, fr,
+                        for ( var i = 0; i < 4; i++ ) {
+                            vehicle.addWheel(
+                                //wheel,
+                                i % 2 === 0 ?wheel:wheel_r,
+                                //wheel_material,
+                                i % 2 === 0 ?wheel_material:wheel_r_material,
+                                new THREE.Vector3(
+                                        i % 2 === 0 ? -12 : 12,
+                                        -8,
+                                        i < 2 ? 22 : -20
+                                ),
+                                new THREE.Vector3( 0, -1, 0 ),
+                                new THREE.Vector3( 
+                                    //i%2 === 0?-1:1, 
+                                    -1,
+                                    0, 
+                                    0 
+                                ),
+                                3,
+                                6,
+                                i < 2 ? false : true
+                            );
+                            // for(var v in vehicle.wheels)
+                            // {
+                            //     console.log(v);
+                            // }
+                            //ttt.scale.set(5,5,5);
+                            //vehicle.addWheel.wheel.scale.set(5,5,5);
+                        }
+                        
+                        input[0] = {
+                            power: null,
+                            velocity:0,
+                            vsize:40,
+                            vmax:300,
+                            brake: null,
+                            direction: null,
+                            steering: 0,
+                            front:2,
+                            back:0,
+                            fd:1,
+                            pos:vehicle.mesh.position
+                        };
+                    });
+                });
+
+            });
+    //return mesh;
+       
+}
+
+function createCar2() {
+    var loader = new THREE.JSONLoader();
+     loader.load( "car_2.js", function( car, car_materials ) {
+                loader.load( "car_2_wheel_l.js", function( wheel, wheel_materials ) {
+                    loader.load( "car_2_wheel_r.js", function( wheel_r, wheel_r_materials ) {
+                        currentId = 1;
+                        var mesh = new Physijs.BoxMesh(
+                            car,
+                            new THREE.MeshFaceMaterial( car_materials ),
+                            250
+                        );
+                        //mesh.position.y = 2;
+                        //mesh.position.set(300,2,300);
+                        //mesh.scale.set(5,5,5);
+                        mesh.castShadow = mesh.receiveShadow = true;
+
+                        var vehicle = new Physijs.Vehicle(mesh, new Physijs.VehicleTuning(
+                            10.88,
+                            1.83,
+                            0.4,
+                            500,
+                            20.5,
+                            10000
+                        ));
+                        // vehicle[currentId].mesh.position.x=initPos[currentId].x;
+                        // vehicle[currentId].mesh.position.y=initPos[currentId].y;
+                        // vehicle[currentId].mesh.position.z=initPos[currentId].z; 
+                        vehicle.mesh.position.set(initPos[currentId].x,initPos[currentId].y,initPos[currentId].z);                        
+                        //vehicle.mesh.position = initPos[currentId];//(900,15,950);//(-7000,15,9200)
+                        vehicle.mesh.rotation.y = Math.PI/2;
+     //                   vehicle.mesh.scale.set(2,2,2);
+                        scene.add( vehicle );
+
+                        window.vehicle[currentId] = vehicle;
+                        window.scene = scene;
+
+                        var wheel_material = new THREE.MeshFaceMaterial( wheel_materials );
+                        var wheel_r_material = new THREE.MeshFaceMaterial(wheel_r_materials);
+                        //
+                        // 0, bl,
+                        // 1, br,
+                        // 2, fl,
+                        // 3, fr,
+                        for ( var i = 0; i < 4; i++ ) {
+                            vehicle.addWheel(
+                                //wheel,
+                                i % 2 === 0 ?wheel:wheel_r,
+                                //wheel_material,
+                                i % 2 === 0 ?wheel_material:wheel_r_material,
+                                new THREE.Vector3(
+                                        i % 2 === 0 ? -9 : 9,
+                                        -4,
+                                        i < 2 ? 16 : -16
+                                ),
+                                new THREE.Vector3( 0, -1, 0 ),
+                                new THREE.Vector3( 
+                                    //i%2 === 0?-1:1, 
+                                    -1,
+                                    0, 
+                                    0 
+                                ),
+                                4,
+                                8,
+                                i < 2 ? false : true
+                            );
+                            // for(var v in vehicle.wheels)
+                            // {
+                            //     console.log(v);
+                            // }
+                            //ttt.scale.set(5,5,5);
+                            //vehicle.addWheel.wheel.scale.set(5,5,5);
+                        }
+
+                        input[1] = {
+                            power: null,
+                            velocity:0,
+                            vsize:100,
+                            vmax:400,
+                            brake: null,
+                            direction: null,
+                            steering: 0,
+                            front:0,
+                            back:2,
+                            fd:-1 ,
+                            pos:vehicle.mesh.position                 
+                        };
+                    });
+                });
+
+            });
+       
+}
+document.addEventListener('keydown', function( ev ) {
+    switch ( ev.keyCode ) {
+        case 37: // left
+        case 65: /*A*/
+            input[currentId].direction = 1;
+            break;
+
+        case 38: // forward
+        case 87: /*W*/
+            input[currentId].power = false;
+            break;
+
+        case 39: // right
+        case 68: /*D*/
+             input[currentId].direction = -1;
+            break;
+
+        case 40: // back
+        case 83: /*S*/
+             input[currentId].power = true;
+            break;
+        case 32: /*space*/
+            //console.log('brake!brake!');
+             input[currentId].brake = true;
+            break;    
+        case 49: // 1
+            setCurrentId(1);
+            break;
+        case 50: // 2
+            setCurrentId(2);
+            break;
+        case 82: // R
+        case 114:
+            resetCar();
+            break;
+        case 67:
+        case 99:
+            uc = true;
+            optionCamera();
+            break;  
+        /*case 71:
+        case 103:
+            ug =true;
+            changeGround();
+            break;*/
+    }
+});
+document.addEventListener('keyup', function( ev ) {
+    switch ( ev.keyCode ) {
+        case 37: // left
+        case 65: /*A*/
+             input[currentId].direction = null;
+            break;
+
+        case 38: // forward
+        case 87: /*W*/
+             input[currentId].power = null;
+            break;
+
+        case 39: // right
+        case 68: /*D*/
+             input[currentId].direction = null;
+            break;
+
+        case 40: // back
+        case 83: /*S*/
+            input[currentId].power = null;
+            break;
+        case 32: /*space*/
+             input[currentId].brake = false;
+        case 64:
+        case 99:
+            uc = false;
+            break;
+      /*  case 71:
+        case 103:*/
+
+    }
+});
+
+function createGround() {
+
+////////////////////////////////////////整个地图///////////////////////////////
+    ////////////////////////////////////////内部/////////////////////////////////
+    var lengthAll = 21600;
+    var widthAll = 16800;
+    // Materials
+   var PlaneGeoAll = new THREE.PlaneGeometry(lengthAll, widthAll, 1, 1);
+    //var material_Plane= new THREE.MeshLambertMaterial({color: 0xFFFFFF});
+    var maxAnisotropyAll = renderer.getMaxAnisotropy();
+
+    var textureAll = THREE.ImageUtils.loadTexture( "ground_05.jpg" );
+    var groundMaterialAll = Physijs.createMaterial(new THREE.MeshPhongMaterial( { color: 0xffffff, map: textureAll } ),0.5,0.3) ;
+    textureAll.anisotropy = maxAnisotropyAll;
+    textureAll.wrapS = textureAll.wrapT = THREE.RepeatWrapping;
+    textureAll.repeat.set( 198,154  );
+    
+    //groundAll
+    var groundAll = new Physijs.BoxMesh(PlaneGeoAll, groundMaterialAll,0); 
+        groundAll.rotation.x = -0.5 * Math.PI;
+    groundAll.position.set(3600,0,1200);
+    groundAll.receiveShadow = true;
+    scene.add(groundAll);
+
+    ////////////////////////////////////外围/////////////////////////////////////////
+    //东边，西边
+    var groundOut_1 = new Array();
+    var map_1 = new Array();
+    for(var i = 0; i<2; i++){
+        var maxAnisotropyOut = renderer.getMaxAnisotropy();
+        var texturelOut = THREE.ImageUtils.loadTexture("ground_09.jpg");
+        var groundMaterialOut = Physijs.createMaterial(new THREE.MeshLambertMaterial({color: 0xffffff,map:texturelOut}),0.9,0.3);
+        texturelOut.anisotropy = maxAnisotropyOut;
+        texturelOut.wrapS = texturelOut.wrapT = THREE.RepeatWrapping;
+        var lengthOut,widthOut;
+            lengthOut = 31200;//长
+            widthOut = 4800;//宽
+            var lpos = 3600,//中心x坐标
+                wpos = 12000 - i*21600;//中心z坐标
+            var ln = 104,//长分段
+                wn = 16;//宽分段
+            texturelOut.repeat.set(ln,wn);
+            var PlaneGeoOut = new THREE.PlaneGeometry(lengthOut, widthOut, 1, 1);
+            groundOut_1[i] = new Physijs.BoxMesh(PlaneGeoOut, groundMaterialOut,0); 
+            groundOut_1[i].rotation.x = -0.5 * Math.PI;
+            groundOut_1[i].position.set(lpos,0,wpos);
+            groundOut_1[i].receiveShadow = true;
+            scene.add(groundOut_1[i]);
+        //起伏地面
+        var date = new Date();
+        var pn = new Perlin('rnd' + date.getTime());
+        map_1[i] = createHeightMap(pn,lengthOut,widthOut,lpos,wpos,ln,wn);
+        scene.add(map_1[i]);
+
+        //种树
+        var lspos = -12000; //其起始x坐标
+        var wspos = 9600 - i*21600;//起始z坐标
+        createMapTree(lengthOut,widthOut,lspos,wspos);
+    }
+
+    //北边，南边
+    var groundOut_2 = new Array();
+    var map_2 = new Array();
+    for(var i = 0; i<2; i++){
+        var maxAnisotropyOut = renderer.getMaxAnisotropy();
+        var texturelOut = THREE.ImageUtils.loadTexture("ground_09.jpg");
+        var groundMaterialOut = Physijs.createMaterial(new THREE.MeshLambertMaterial({color: 0xffffff,map:texturelOut}),0.9,0.3);
+        texturelOut.anisotropy = maxAnisotropyOut;
+        texturelOut.wrapS = texturelOut.wrapT = THREE.RepeatWrapping;
+        var lengthOut,widthOut;
+        lengthOut = 4800;//长
+        widthOut = 16800;//宽
+        var lpos = 16800 - i*26400;//中心x坐标
+        var wpos = 1200;//中心z坐标
+        var ln = 16, //长分段
+            wn = 54; //宽分段
+        texturelOut.repeat.set(ln,wn);
+        var PlaneGeoOut = new THREE.PlaneGeometry(lengthOut, widthOut, 1, 1);
+        groundOut_2[i] = new Physijs.BoxMesh(PlaneGeoOut, groundMaterialOut,0); 
+        groundOut_2[i].rotation.x = -0.5 * Math.PI;
+        groundOut_2[i].position.set(lpos,0,wpos);
+        groundOut_2[i].receiveShadow = true;
+        scene.add(groundOut_2[i]);
+
+        //起伏地面
+        var date = new Date();
+        var pn = new Perlin('rnd' + date.getTime());
+        map_2[i] = createHeightMap(pn,lengthOut,widthOut,lpos,wpos,ln,wn);
+        scene.add(map_2[i]);
+
+        //种树
+        var lspos = 14400 - i*26400; //其起始x坐标
+        var wspos = -12000;//起始z坐标
+        createMapTree(lengthOut,widthOut,lspos,wspos);
+    }
+
+    //生成起伏地面
+        function createHeightMap(pn,len,wid,lpos,wpos,ln,wn) {
+        var maxAnisotropyOut = renderer.getMaxAnisotropy();
+        var texturelOut = THREE.ImageUtils.loadTexture("ground_09.jpg");
+        var groundMaterialOut = Physijs.createMaterial(new THREE.MeshLambertMaterial({color: 0xffffff,map:texturelOut}),0.9,0.3);
+        texturelOut.anisotropy = maxAnisotropyOut;
+        texturelOut.wrapS = texturelOut.wrapT = THREE.RepeatWrapping;
+        texturelOut.repeat.set(ln,wn);
+
+            var ground_geometry = new THREE.PlaneGeometry(len-100, wid-100, 39, 39);
+            for (var i = 0; i < ground_geometry.vertices.length; i++) {
+                var vertex = ground_geometry.vertices[i];
+                var value = pn.noise(vertex.x / 5, vertex.y / 5, 0);
+                vertex.z = value * 75;
+            }
+            ground_geometry.computeFaceNormals();
+            ground_geometry.computeVertexNormals();
+            //console.log(len,wid,lpos,wpos,ln,wn);
+            var ground = new Physijs.HeightfieldMesh(
+                    ground_geometry,
+                    groundMaterialOut,//ground_material,
+                    0, // mass
+                    39,
+                    39
+            );
+            ground.position.set(lpos,-35,wpos);
+            ground.rotation.x = Math.PI / -2;
+            ground.receiveShadow = true;
+
+            return ground;
+        }
+
+    //起伏地面上的树，没有碰撞效果
+        function createMapTree(len,wid,lspos,wspos){
+            //树林tree03
+            var ln = parseInt(len / 500);//长分段
+            var wn = parseInt(wid / 500);//宽分段
+            
+            var loader_tree03 = new THREE.JSONLoader(true);
+            loader_tree03.load("tree03.js", function ( geometry,materials) {
+                var tree03 = new Array();
+                for(var i = 0; i<ln; i++){
+                    tree03[i] = new Array();
+                }
+                for(var i = 0; i<ln; i++){
+                    for(var j = 0; j<wn; j++){
+                        tree03[i][j] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                        tree03[i][j].position.set(lspos + Math.random() * 500 + i*500, 5, wspos + Math.random()*500 + j*500);console.log(ln,wn);
+                        tree03[i][j].scale.set(20,25,20);
+                        scene.add(tree03[i][j]);
+                    }                   
+                }    
+            });
+        }
+
+}//createGround()结束
+
+
+
+//小方块
+function createCube(){
+    //var cubeSize = Math.ceil((Math.random() * 10));
+    //var geometry = new THREE.CubeGeometry( cubeSize, cubeSize, cubeSize );
+    var geometry = new THREE.CubeGeometry( 6, 6, 6 );
+    //var material_cube = Physijs.createMaterial(new THREE.MeshLambertMaterial( { color: scale(Math.random()).hex(),} ),0.3,0);
+    var cube = [];
+    var i =0;
+    for (; i <= 24; i++) {
+        cube[i] = getCube(i);
+        scene.add(cube[i]);
+    };
+    function getCube(){
+        var material_cube = Physijs.createMaterial(new THREE.MeshLambertMaterial( { color: scale(Math.random()).hex(),} ),0.3,0);
+        cube[i] = new Physijs.BoxMesh(geometry, material_cube);
+        //cube[i].rotation.set(0,0,0); 
+        var vz = i % 5;
+        var vy = i / 5;
+        cube[i].position.set(850,4+6*vy,300+6*vz);   
+        cube[i].__dirtyRotation = true;
+        return cube[i];
+    };
+}
+
+//障碍物
+function createBlock(a,b,c){
+    var geometry = new THREE.CubeGeometry( a, b, c );
+    var block = new Physijs.BoxMesh(geometry,new THREE.MeshLambertMaterial({color:0xffffff}),9500);
+    return block;
+}
+
+function createclinder_block(a,b,c){
+    var geometry=new THREE.CylinderGeometry(a,b,c);
+    var block=new Physijs.BoxMesh(geometry,new THREE.MeshLambertMaterial({color:0xffffff}),9500);
+    return block;
+}
+
+
+
+function createModel(){
+    ////////////////////////////////////////ground01//////////////////////////////////////////
+
+    //房子9_3
+    var loader_house9_3 = new THREE.JSONLoader(true);
+    var house9_3;
+    loader_house9_3.load("house9_3.js", function ( geometry,materials ) {
+        //var loading = document.getElementById("Loading");
+        //loading.parentNode.removeChild(loading);
+        
+        //var material_car1 = Physijs.createMaterial(new THREE.MeshLambertMaterial({color: 0xFF0000}),0.8,0.3); 
+        //var   mesh = new THREE.SkinnedMesh(geometry, mat);
+        //obj1 = new Physijs.BoxMesh(geometry, material_car1,500);
+
+        house9_3 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        //var house1_2 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        house9_3.position.set(1900,320,1450);
+        house9_3.rotation.y = 0.45 * Math.PI;
+        house9_3.scale.set(700,700,700);
+        //scene.add(house9_3);
+        scene.add(house9_3);
+
+    });
+
+     //喷泉fountain01
+    var loader_fountain01 = new THREE.JSONLoader(true);
+    var fountain01;
+    loader_fountain01.load("fountain01.js", function ( geometry,materials) {
+        fountain01 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        fountain01.position.set(1200,0,1400);
+        //fountain01.rotation.y =  -0.5 * Math.PI;
+        fountain01.scale.set(0.02,0.02,0.02);
+        scene.add(fountain01);
+        
+        var block = createclinder_block(50,190,30);
+        block.position.set(1200,100,1400);
+        //block.visible = false;
+        scene.add(block);
+    });
+
+
+    //汽车module_car4，很好，可用来控制
+    var loader_module_car4 = new THREE.JSONLoader(true);
+    var module_car4;
+    var module_car4_2;//ground07中的一辆车
+    loader_module_car4.load("module_car4.js", function ( geometry,materials) {
+        module_car4 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        module_car4.position.set(1200,0,1000);
+        module_car4.rotation.y = - 0.5 * Math.PI;
+        module_car4.scale.set(0.06,0.06,0.06);
+        scene.add(module_car4);
+
+        var block=createBlock(75,10,30);
+        block.position.set(1200,100,1000);
+        block.visible=false;
+        scene.add(block);
+
+
+        module_car4_2 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        module_car4_2.position.set(-1350,0,900);
+        module_car4_2.rotation.y = 0.5 * Math.PI;
+        module_car4_2.scale.set(0.06,0.06,0.06);
+        scene.add(module_car4_2);
+        
+        var block_2=createBlock(75,10,30);
+        block_2.position.set(-1350,100,900);
+        block_2.visible=false;
+        scene.add(block_2);
+    });
+
+    ///////////////////////////////ground02//////////////////////////////////////////////////
+    //房子house18，大办公楼
+    var loader_house18 = new THREE.JSONLoader(true);
+    var house18;
+    loader_house18.load("house18.js", function ( geometry,materials) {
+        house18 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house18.position.set(4700,0,100);
+        house18.rotation.y =  -0.5 * Math.PI;
+        house18.scale.set(3,3,3);
+        scene.add(house18);
+        
+    var block=createBlock(645,100,1400);
+        block.position.set(4990,300,900);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+    ///////////////////////////////ground03//////////////////////////////////////////////////
+    //路灯streetlight2，原本是1
+    var loader_streetlight1 = new THREE.JSONLoader(true);
+    var streetlight1,streetlight1_2;//两只路灯
+    var streetlight1_3,streetlight1_4;//ground08中的两只路灯
+    loader_streetlight1.load("streetlight2.js", function ( geometry,materials) {
+        streetlight1 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),500);
+        streetlight1.position.set(1100,20,-900);
+        //people01.rotation.y =  -0.5 * Math.PI;
+        streetlight1.scale.set(0.2,0.2,0.2);
+        scene.add(streetlight1);
+        scene.add(streetlight1);
+
+         streetlight1_2 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),500);
+        streetlight1_2.position.set(1250,20,-900);
+        //people01_2.rotation.y =  -0.5 * Math.PI;
+        streetlight1_2.scale.set(0.2,0.2,0.2);
+        scene.add(streetlight1_2);
+        scene.add(streetlight1_2);
+
+        streetlight1_3 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),500);
+        streetlight1_3.position.set(-1250,20,1150);
+        //people01_3.rotation.y =  -0.5 * Math.PI;
+        streetlight1_3.scale.set(0.2,0.2,0.2);
+        scene.add(streetlight1_3);
+        scene.add(streetlight1_3);
+
+        streetlight1_4 = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),500);
+        streetlight1_4.position.set(-1250,20,1350);
+        //people01_4.rotation.y =  -0.5 * Math.PI;
+        streetlight1_4.scale.set(0.2,0.2,0.2);
+        scene.add(streetlight1_4);
+        scene.add(streetlight1_4);
+    });
+
+    //房子house15
+    var loader_house15 = new THREE.JSONLoader(true);
+    var house15;
+    loader_house15.load("house15.js", function ( geometry,materials) {
+        house15 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house15.position.set(1200,0,-1200);
+        house15.rotation.y =  Math.PI;
+        house15.scale.set(0.4,0.4,0.4);
+        scene.add(house15);
+        
+
+        var block=createBlock(420,100,400);
+        block.position.set(1210,300,-1200);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+
+    ///////////////////////////////ground04/////////////////////////////
+    //房子house23
+    var loader_house23 = new THREE.JSONLoader(true);
+    var house23;
+    loader_house23.load("house23.js", function ( geometry,materials) {
+        house23 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house23.position.set(3100,0,-2200);
+        house23.rotation.y =  -0.5 * Math.PI;
+        house23.scale.set(0.9,0.9,0.9);
+        scene.add(house23);
+        
+
+        var block=createBlock(380,200,310);
+        block.position.set(3180,400,-2200);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    //有两棵小草，在ground02中设置
+
+
+    ///////////////////////////////ground05/////////////////////////
+    //房子house20,很好
+    var loader_house20 = new THREE.JSONLoader(true);
+    var house20;
+    loader_house20.load("house20.js", function ( geometry,materials) {
+        house20 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house20.position.set(1000,0,4200);
+        house20.rotation.y =  -0.5 * Math.PI;
+        house20.scale.set(0.3,0.3,0.3);
+        scene.add(house20);
+        
+        var block=createBlock(390,200,360);
+        block.position.set(1000,400,4400);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+//////////////////////////////////////////ground06/////////////////////////////////
+    //房子house21,很好
+    var loader_house21 = new THREE.JSONLoader(true);
+    var house21;
+    loader_house21.load("house21.js", function ( geometry,materials) {
+        house21 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house21.position.set(3600,0,4000);
+        house21.rotation.y =  -0.5 * Math.PI;
+        house21.scale.set(0.25,0.25,0.25);
+        scene.add(house21);
+        
+        var block=createBlock(390,200,460);
+        block.position.set(3600,100,3990);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    ///////////////////////////////////ground07//////////////////////////
+
+    //房子house24
+    var loader_house24 = new THREE.JSONLoader(true);
+    var house24;
+    loader_house24.load("house24.js", function ( geometry,materials) {
+        house24 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house24.position.set(-1500,0,1300);
+        house24.rotation.y =  Math.PI;
+        house24.scale.set(0.3,0.3,0.3);
+        scene.add(house24);
+
+        var block=createBlock(352,200,470);
+        block.position.set(-1500,100,1285);
+        block.visible=false;
+        scene.add(block);
+    });
+    //两只路灯，在ground03中设置
+    //一辆汽车，在ground01中设置
+
+
+    //////////////////////////////////ground08///////////////////////
+    //house10，单一颜色
+    var loader_house10 = new THREE.JSONLoader(true);
+    var house10;
+    loader_house10.load("house10.js", function ( geometry,materials) {
+        house10 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house10.position.set(-1000,0,4500);
+        house10.rotation.y =  -0.5 * Math.PI;
+        house10.scale.set(0.3,0.3,0.3);
+        scene.add(house10);
+        
+
+        var block=createBlock(360,200,470);
+        block.position.set(-1000,100,4500);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+    //////////////////////////////////ground09///////////////////////
+    //房子house12_1，单一颜色
+    var loader_house12_1 = new THREE.JSONLoader(true);
+    var house12_1;
+    loader_house12_1.load("house12_1.js", function ( geometry,materials) {
+        house12_1 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house12_1.position.set(-1000,0,-2000);
+        //house12_1.rotation.y =  -0.5 * Math.PI;
+        house12_1.scale.set(0.2,0.2,0.2);
+        scene.add(house12_1);
+        
+
+        var block=createBlock(330,200,390);
+        block.position.set(-995,100,-2000);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    //////////////////////////////////ground10///////////////////////
+        //房子house31,很好
+    var loader_house31 = new THREE.JSONLoader(true);
+    var house31;
+    loader_house31.load("house31.js", function ( geometry,materials) {
+        house31 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house31.position.set(7600,0,2400);
+        house31.rotation.y =  -0.5 * Math.PI;
+        house31.scale.set(0.09,0.09,0.09);
+        scene.add(house31);
+        
+
+        var block=createBlock(780,100,1720);
+        block.position.set(7600,100,2400);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    /////////////////////////////////////////ground11////////////////////////////
+     //房子house25
+    var loader_house25 = new THREE.JSONLoader(true);
+    var house25;
+    loader_house25.load("house25.js", function ( geometry,materials) {
+        house25 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house25.position.set(6500,0,-3000);
+        house25.rotation.y =  -0.5 * Math.PI;
+        house25.scale.set(0.6,0.15,0.6);
+        scene.add(house25);
+
+        var block=createBlock(610,50,890);
+        block.position.set(6550,100,-3000);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+    //////////////////////////////////ground12///////////////////////
+    //不加内容
+  
+
+
+    //////////////////////////////////////////ground13//////////////////////////////
+    //和ground16，ground31合并
+    //房子house32,很好
+    var loader_house32 = new THREE.JSONLoader(true);
+    var house32;
+    loader_house32.load("house32.js", function ( geometry,materials) {
+        house32 = new Physijs.Mesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        house32.position.set(13000,0,1400);
+        house32.rotation.y =  -0.5 * Math.PI;
+        house32.scale.set(3,2,3);
+        scene.add(house32);
+        
+        var block=createBlock(640,200,1250);
+        block.position.set(13000,100,1400);
+        block.visible=false;
+        scene.add(block);
+    });
+
+
+    //////////////////////////////////////ground16//////////////////////////////
+    //和ground13合并
+
+
+    ////////////////////////////////////ground14//////////////////////////////////
+    //房子house30，很好
+    var loader_house30 = new THREE.JSONLoader(true);
+    var house30;
+    loader_house30.load("house30.js", function ( geometry,materials) {
+        house30 = new Physijs.Mesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        house30.position.set(10400,0,-1600);
+        house30.rotation.y =  -0.5 * Math.PI;
+        house30.scale.set(0.2,0.2,0.2);
+        scene.add(house30);
+        
+        var block=createBlock(780,100,750);
+        block.position.set(10400,100,-1600);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    /////////////////////////////////////ground15/////////////////////////////////////
+    //房子house34，很好
+    var loader_house34 = new THREE.JSONLoader(true);
+    var house34;
+    loader_house34.load("house34.js", function ( geometry,materials) {
+        house34 = new Physijs.Mesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        house34.position.set(10300,0,4800);
+        house34.rotation.y =   Math.PI;
+        house34.scale.set(0.02,0.02,0.02);
+        scene.add(house34);
+        
+        var block=createBlock(1040,300,870);
+        block.position.set(10240,200,4805);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    /////////////////////////////////////ground17////////////////////////////////////
+    //和ground14合并
+
+    /////////////////////////////////////ground18////////////////////////////////////
+    //和ground15合并
+
+
+    ////////////////////////////////////ground19 ////////////////////////////////////////
+    //汽车module_car7_1,可用来控制
+    var loader_module_car7_1 = new THREE.JSONLoader(true);
+    loader_module_car7_1.load("module_car7_1.js", function ( geometry,materials) {
+        var module_car7_1 = new Array(); //三辆一样的车
+        for(var i = 0; i < 3; i++){
+            module_car7_1[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car7_1[i].position.set(900 + i * 300, 0, -5400);
+            module_car7_1[i].rotation.y = -0.5 * Math.PI;
+            module_car7_1[i].scale.set(0.15,0.15,0.15);
+            scene.add(module_car7_1[i]);
+        }
+    });
+
+
+    //汽车module_car11_1,大卡车
+    var loader_module_car11_1 = new THREE.JSONLoader(true);
+    loader_module_car11_1.load("module_car11_1.js", function ( geometry,materials) {
+        var module_car11_1 = new Array();//三辆一样的大卡车
+        for(var i = 0; i < 3; i++){
+            module_car11_1[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car11_1[i].position.set(900 + i * 300, 0, -5700);
+            module_car11_1[i].rotation.y = 0.5 * Math.PI;
+            module_car11_1[i].scale.set(0.3,0.3,0.3);
+            scene.add(module_car11_1[i]);
+        }
+    });
+
+    ///////////////////////////////////////ground20////////////////////////////////////////////
+    //汽车module_car15，跑车
+    var loader_module_car15 = new THREE.JSONLoader(true);
+    loader_module_car15.load("module_car15.js", function ( geometry,materials) {
+        var module_car15 = new Array(); //三辆一样的跑车
+        for(var i = 0; i < 3; i++){
+            module_car15[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car15[i].position.set(3200 + i * 300, 0 ,-5400);
+            module_car15[i].scale.set(1.5,1.5,1.5);
+            scene.add(module_car15[i]);
+        }
+    });
+
+
+    //汽车module_car12，大面包车
+    var loader_module_car12 = new THREE.JSONLoader(true);
+    loader_module_car12.load("module_car12.js", function ( geometry,materials) {
+        var module_car12 = new Array(); //三辆大面包车
+         for(var i = 0; i < 3; i++){
+            module_car12[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car12[i].position.set(3200 + i * 300,0,-5700);
+            module_car12[i].scale.set(1,1,1);
+            scene.add(module_car12[i]);
+         }
+    });
+
+
+    //////////////////////////////////////////////ground21///////////////////////////////////////
+    //汽车module_car14_1，吊车
+    var loader_module_car14_1 = new THREE.JSONLoader(true);
+    loader_module_car14_1.load("module_car14_1.js", function ( geometry,materials) {
+        var module_car14_1 = new Array(); //三辆吊车
+        for(var i = 0; i < 3; i++){
+            module_car14_1[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car14_1[i].position.set(-1200 + i * 300,0,-5600);
+            module_car14_1[i].scale.set(0.02,0.02,0.02);
+            scene.add(module_car14_1[i]);
+        }
+    });
+
+
+    /////////////////////////////////////////////ground22/////////////////////////////////////
+    //汽车module_car13，公交车
+    var loader_module_car13 = new THREE.JSONLoader(true);
+    loader_module_car13.load("module_car13.js", function ( geometry,materials) {
+        var module_car13 = new Array();  //三辆公交车
+        for(var i = 0; i < 3; i++){
+            module_car13[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car13[i].position.set(5700 + i * 300, 0, -5700);
+            module_car13[i].scale.set(1,1,1);
+            scene.add(module_car13[i]);
+        }
+    });
+
+
+    //////////////////////////////////////////////ground23//////////////////////////////////////
+    //汽车module_car17，越野摩托车
+    var loader_module_car17 = new THREE.JSONLoader(true);
+    loader_module_car17.load("module_car17.js", function ( geometry,materials) {
+        var module_car17 = new Array();//三辆越野车
+        for(var i = 0; i < 3; i++){
+            module_car17[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car17[i].position.set(8100 + i * 300, 0,-5400);
+            module_car17[i].rotation.y =  Math.PI;
+            module_car17[i].scale.set(0.6,0.6,0.6);
+            scene.add(module_car17[i]);
+        }
+    });
+
+    //汽车module_car20，跑车
+    var loader_module_car20 = new THREE.JSONLoader(true);
+    loader_module_car20.load("module_car20.js", function ( geometry,materials) {
+        var module_car20 = new Array();//三辆跑车
+        for(var i = 0; i < 3; i++){
+            module_car20[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            module_car20[i].position.set(8100 + i * 300, 0,-5700);
+            module_car20[i].scale.set(0.6,0.6,0.6);
+            scene.add(module_car20[i]);
+        }
+    });
+
+
+
+    ////////////////////////////////////////ground25/////////////////////////////////
+    //飞机,airplane01，单一颜色
+    var loader_airplane01 = new THREE.JSONLoader(true);
+    var airplane01,airplane01_2,airplane01_3,airplane01_4;//四架飞机
+    loader_airplane01.load("airplane01.js", function ( geometry,materials) {
+        //第一架
+        airplane01 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        airplane01.position.set(1000,0,8200);
+        airplane01.rotation.y =  Math.PI;
+        airplane01.scale.set(3.9,3.9,3.9);
+        scene.add(airplane01);
+        
+        //第二架
+        airplane01_2 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0x999999}));
+        airplane01_2.position.set(1500,0,8200);
+        airplane01_2.rotation.y =  Math.PI;
+        airplane01_2.scale.set(3.9,3.9,3.9);
+        scene.add(airplane01_2);
+
+        //第三架
+        airplane01_3 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0x00aaaa}));
+        airplane01_3.position.set(2000,0,8200);
+        airplane01_3.rotation.y =  Math.PI;
+        airplane01_3.scale.set(3.9,3.9,3.9);
+        scene.add(airplane01_3);
+        
+        //第四架
+        airplane01_4 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0x000099}));
+        airplane01_4.position.set(500,0,8200);
+        airplane01_4.rotation.y =  Math.PI;
+        airplane01_4.scale.set(3.9,3.9,3.9);
+        scene.add(airplane01_4);
+    });
+
+    /////////////////////////////////////////////ground26////////////////////////////////////////
+    //飞机,airplane02
+    var loader_airplane02 = new THREE.JSONLoader(true);
+    loader_airplane02.load("airplane02.js", function ( geometry,materials) {
+        var airplane02 = new Array();//四架飞机
+        for(var i = 0; i < 4; i++){
+            airplane02[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            airplane02[i].position.set(3000 + i * 500,0,8200);
+            airplane02[i].rotation.y = - 0.5 * Math.PI;
+            airplane02[i].scale.set(0.08,0.08,0.08);
+            scene.add(airplane02[i]);
+        }
+    });
+
+    /////////////////////////////////////////ground27////////////////////////////////////
+    //飞机,airplane03
+    var loader_airplane03 = new THREE.JSONLoader(true);
+    loader_airplane03.load("airplane03.js", function ( geometry,materials) {
+        var airplane03 = new Array();//四架飞机
+        for(var i = 0; i < 4; i++){
+            airplane03[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            airplane03[i].position.set(-500 - i * 500,0,8200);
+            airplane03[i].rotation.y = - 0.5 * Math.PI;
+            airplane03[i].scale.set(1,1,1);
+            scene.add(airplane03[i]);
+        }
+    });
+
+    
+    /////////////////////////////////////////ground28/////////////////////////////////
+    //飞机,airplane06_1,单一颜色
+    var loader_airplane06_1 = new THREE.JSONLoader(true);
+    var airplane06_1,airplane06_1_2,airplane06_1_3,airplane06_1_4;//四架飞机
+    loader_airplane06_1.load("airplane06_1.js", function ( geometry,materials) {
+        //第一架
+        airplane06_1 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        airplane06_1.position.set(5500,0,8200);
+        airplane06_1.rotation.y =  Math.PI;
+        airplane06_1.scale.set(0.32,0.32,0.32);
+        scene.add(airplane06_1);
+
+        //第二架
+        airplane06_1_2 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0xeeeeee}));
+        airplane06_1_2.position.set(6000,0,8200);
+        airplane06_1_2.rotation.y =  Math.PI;
+        airplane06_1_2.scale.set(0.32,0.32,0.32);
+        scene.add(airplane06_1_2);
+
+        //第三架
+        airplane06_1_3 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0x20aaa5}));
+        airplane06_1_3.position.set(6500,0,8200);
+        airplane06_1_3.rotation.y =  Math.PI;
+        airplane06_1_3.scale.set(0.32,0.32,0.32);
+        scene.add(airplane06_1_3);
+
+        //第四架
+        airplane06_1_4 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0xaaaa00}));
+        airplane06_1_4.position.set(7000,0,8200);
+        airplane06_1_4.rotation.y =  Math.PI;
+        airplane06_1_4.scale.set(0.32,0.32,0.32);
+        scene.add(airplane06_1_4);
+    });
+
+
+    ////////////////////////////////////ground29///////////////////////////////////
+    //飞机,airplane05
+    var loader_airplane05 = new THREE.JSONLoader(true);
+    loader_airplane05.load("airplane05.js", function ( geometry,materials) {
+        var airplane05 = new Array();//四架飞机
+        for(var i = 0; i < 4; i++){
+            airplane05[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            airplane05[i].position.set(8000 + i * 500,0,7900);
+            airplane05[i].rotation.y =  Math.PI;
+            airplane05[i].scale.set(6,6,6);
+            scene.add(airplane05[i]);
+        }
+    });
+
+    /////////////////////////////////////////ground31 /////////////////////////////////////////////
+    //亭子pavilion
+    var loader_pavilion = new THREE.JSONLoader(true);
+    var pavilion;
+    loader_pavilion.load("pavilion.js", function ( geometry,materials) {
+        pavilion = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        pavilion.position.set(-4500,0,1600);
+        pavilion.scale.set(0.5,0.5,0.5);
+        scene.add(pavilion);
+    
+        var block = createclinder_block(30,100,30);
+        block.position.set(-4500,0,1600);
+        block.visible = false;
+        scene.add(block);
+    });
+
+    //亭子pavilion1
+    var loader_pavilion1 = new THREE.JSONLoader(true);
+    var pavilion1;
+    loader_pavilion1.load("pavilion1.js", function ( geometry,materials) {
+        pavilion1 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        pavilion1.position.set(-4500,0,1000);
+        pavilion1.scale.set(0.2,0.2,0.2);
+        scene.add(pavilion1);
+        
+        var block = createclinder_block(30,85,30);
+        block.position.set(-4500,0,1000);
+        block.visible = false;
+        scene.add(block);
+    });
+
+
+
+    ///////////////////////////////////////////////ground32///////////////////////////////////////////
+    //房子house35
+    var loader_house35 = new THREE.JSONLoader(true);
+    var house35,house35_2;//两栋房子
+    loader_house35.load("house35.js", function ( geometry,materials) {
+        //第一栋
+        house35 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        house35.position.set(-4500,0,5700);
+        house35.rotation.y =  Math.PI;
+        house35.scale.set(0.1,0.1,0.1);
+        scene.add(house35);
+
+        //第二栋
+        house35_2 = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color:0xffff00}));
+        house35_2.position.set(-4700,0,5700);
+        house35_2.rotation.y =  Math.PI;
+        house35_2.scale.set(0.1,0.1,0.1);
+        scene.add(house35_2);
+
+        var block=createBlock(390,40,170);
+        block.position.set(-4600,40,5700);
+        block.visible=false;
+        scene.add(block);
+    });
+
+    //休闲小站cafebar
+    var loader_cafebar = new THREE.JSONLoader(true);
+    //var cafebar,cafebar_2,cafebar_3,cafebar_4;
+    loader_cafebar.load("cafebar.js", function ( geometry,materials) {
+        var cafebar = new Array();//四张桌子
+        for(var i = 0; i<2; i++){
+                cafebar[i] = new Array();
+        }
+
+        for(var i = 0; i<2; i++){
+            for(var j = 0; j<2; j++){
+                cafebar[i][j] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                cafebar[i][j].position.set(-4670 + j * 140, 0, 5450 - i * 100);
+                cafebar[i][j].rotation.y =  Math.PI;
+                cafebar[i][j].scale.set(0.015,0.015,0.015);
+                scene.add(cafebar[i][j]);
+            }
+        }
+    });
+
+
+
+    ///////////////////////////////////////ground33//////////////////////////////////
+    //假山mountain01
+    var loader_mountain01 = new THREE.JSONLoader(true);
+    var mountain01;
+    loader_mountain01.load("mountain01.js", function ( geometry,materials) {
+        mountain01 = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+        mountain01.position.set(-4600,0,-3700);
+        //mountain01.rotation.y =  0.5 * Math.PI;
+        mountain01.scale.set(8,8,8);
+        scene.add(mountain01);  
+
+        var block = createBlock(300,30,175);
+        block.position.set(-4600,50,-3690);
+        block.visible = false;
+        scene.add(block);
+    });
+    
+    //雕像statue
+    var loader_statue = new THREE.JSONLoader(true);
+    var statue;
+    loader_statue.load("statue.js", function ( geometry,materials) {
+        //statue = new Physijs.BoxMesh(geometry, new THREE.MeshLambertMaterial({color: 0xB87333}) ,9500);
+        statue = new Physijs.BoxMesh(geometry, new THREE.MeshFaceMaterial(materials),9500);
+        statue.position.set(-4600,300,-3450);
+        statue.scale.set(150,150,150);
+        scene.add(statue);
+    });
+
+
+    //石雕stone_statue7
+    var loader_stone_statue7 = new THREE.JSONLoader(true);
+    loader_stone_statue7.load("stone_statue7.js", function ( geometry,materials) {
+        var stone_statue7 = new Array();
+        for(var i = 0; i<2; i++){
+            stone_statue7[i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+            stone_statue7[i].position.set(-4520 - i * 200 ,0 ,-3600);
+            stone_statue7[i].scale.set(15,15,15);
+            scene.add(stone_statue7[i]);
+        }
+    });
+
+
+
+    //////////////////////////////////////////场景中的椅子///////////////////////////////
+    //椅子chair01_1，很好
+    var loader_chair01_1 = new THREE.JSONLoader(true);
+    loader_chair01_1.load("chair01_1.js", function ( geometry,materials) {
+        var chair01_1 = new Array();
+        for(var i = 0; i<8; i++){
+            chair01_1[i] = new Array();
+        }
+        for (var j = 0; j < 8; j++) {
+            for (var i = 0; i < 18; i++){
+                chair01_1[j][i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                chair01_1[j][i].position.set(-5550 + i*1000,0,-3790 + j*1500);
+                chair01_1[j][i].rotation.y =  -0.5 * Math.PI;
+                chair01_1[j][i].scale.set(0.1,0.1,0.1);
+                scene.add(chair01_1[j][i]);
+            }
+        }
+    });
+
+    //////////////////////////////////////////场景中的树////////////////////////////////
+    //小草tree4_5
+    var loader_tree4_5 = new THREE.JSONLoader(true);
+    loader_tree4_5.load("tree4_5.js", function ( geometry) {
+        var tree4_5 = new Array();
+        for(var i = 0; i<8; i++){
+            tree4_5[i] = new Array();
+        }
+        for (var j = 0; j < 8; j++) {
+            for (var i = 0; i < 18; i++){
+                tree4_5[j][i] = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({color: 0x005500}));
+                tree4_5[j][i].position.set(-5500 + i*1000,100,-3800 + j*1500);
+                tree4_5[j][i].scale.set(1.5,2,1.5);
+                scene.add(tree4_5[j][i]);
+            }
+        }
+    });
+
+
+    ///////////////////////////////////////周围的树木///////////////////////////////////
+    //树林tree03,原本是1
+    var loader_tree01 = new THREE.JSONLoader(true);
+    loader_tree01.load("tree03.js", function ( geometry ,materials) {
+        //东面，西面
+        var tree_1 = new Array();
+        for(var i = 0;i<2;i++){
+            tree_1[i] = new Array();
+        }; 
+        for (var j = 0; j < 2; j++) {
+            for (var i = 0; i < 53; i++){
+                tree_1[j][i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                tree_1[j][i].position.set(-6800 + 400*i , 0, 9500 - 16600*j);
+                //tree_1[j][i].scale.set(0.15,0.15,0.15);
+                tree_1[j][i].scale.set(20,30,20);
+                scene.add(tree_1[j][i]);
+            };
+        };
+
+        //北面，南面
+        var tree_2 = new Array();
+        for(var i = 0;i<2;i++){
+            tree_2[i] = new Array();
+        }; 
+        for (var j = 0; j < 2; j++) {
+            for (var i = 0; i < 42; i++){
+                tree_2[j][i] = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+                tree_2[j][i].position.set(-7100 + 21400*j , 0, -7000 + 400*i);
+                //tree_2[j][i].scale.set(0.15,0.15,0.15);
+                tree_2[j][i].scale.set(20,30,20);
+                scene.add(tree_2[j][i]);
+            };
+        };
+    });
+
+
+}//createModel结束
+
+var num = 0;
+render = function () {
+    //控制camera跟踪车走
+    if(vehicle[currentId]){
+        if(resetkey){
+            console.log('ori'+vehicle[currentId].mesh.position.x+','+vehicle[currentId].mesh.position.y);
+            vehicle[currentId].mesh.position.set(1100,15,1050);
+            console.log(vehicle[currentId].mesh.position.x+','+vehicle[currentId].mesh.position.y);
+            resetkey = false;
+        }
+        //console.log('xxx: '+vehicle[currentId].mesh.position.x+','+vehicle[currentId].mesh.position.y);
+        camera.position.set(vehicle[currentId].mesh.position.x -30-mouseX,vehicle[currentId].mesh.position.y+cameraHeight-mouseY,vehicle[currentId].mesh.position.z-30);
+        //camera.position.set(car.position.x -130-mouseX,car.position.y+900-mouseY,car.position.z-130);
+        //camera.position.set(car.position.x +20,car.position.y+50,car.position.z+20);
+        camera.lookAt(new THREE.Vector3( vehicle[currentId].mesh.position.x,vehicle[currentId].mesh.position.y,vehicle[currentId].mesh.position.z));
+    }
+
+   /* //控制鼠标视觉角度
+    delta = clock.getDelta();
+    rollControls.update(delta);
+    //orbitControls.update(delta);*/
+/*
+    if(camera.position.x <= -60 && num == 0){
+        createModel();
+        num++;
+    }
+    */
+
+    requestAnimationFrame(render);
+    renderer.render(scene, camera);
+    render_stats.update();
+    scene.simulate(undefined, 2);
+};
+
+
+window.onload = initScene;
+
+</script>
+</head>
+
+<body>
+<div id="viewport"></div>
+</body>
+
+</html>
